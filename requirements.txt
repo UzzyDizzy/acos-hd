@@ -1,0 +1,36 @@
+# ACOS-HD Pipeline Dependencies
+# Core LLM / API
+openai>=1.30.0
+transformers>=4.40.0
+torch>=2.1.0
+bitsandbytes>=0.43.0
+accelerate>=0.30.0
+
+# Embeddings for semantic filtering
+sentence-transformers>=2.7.0
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Text preprocessing
+ftfy>=6.1.0
+emoji>=2.8.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+langdetect>=1.0.9
+regex>=2023.0
+
+# Deduplication
+datasketch>=1.6.0
+rapidfuzz>=3.6.0
+
+# Environment & CLI
+python-dotenv>=1.0.0
+tqdm>=4.65.0
+
+# Async
+aiohttp>=3.9.0
+
+# Ekphrasis (installed from local clone)
+# pip install -e ./gitclones/ekphrasis
