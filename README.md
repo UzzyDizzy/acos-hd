@@ -6,45 +6,41 @@ A two-stage LLM generation pipeline that produces structured ACOS-HD annotations
 
 ---
 
-## Architecture
+## Architecture Diagram
 
-```
-stance_detection_dataset.csv  ──►  data_filtering.py  ──►  preprocessing.py
-         │                              │                        │
-         │                     (keyword + semantic               │
-         │                      filtering, dedup                 │
-         │                      against gold_dataset.csv)        │
-         ▼                              ▼                        ▼
-   ┌─────────────────────────────────────────────────────────────────┐
-   │                      data_constructor.py                            │
-   │  ┌───────────────────┐    ┌───────────────────┐                │
-   │  │ Stage 1 (GPT-4.1) │    │ Stage 2 (GPT-4.1) │                │
-   │  │ Aspect Target      │──►│ Stance Label       │                │
-   │  │ Aspect Category    │    │ Explanation        │                │
-   │  │ Opinion Span       │    │ Evidence           │                │
-   │  └────────┬───────────┘    └────────┬───────────┘                │
-   │           │ validate_stage1.py      │ validate_stage2.py        │
-   │           ▼                         ▼                           │
-   │  ┌───────────────────┐    ┌───────────────────┐                │
-   │  │ repair_stage1.py  │    │ repair_stage2.py  │                │
-   │  │ (LLaMA 3.1 8B)   │    │ (LLaMA 3.1 8B)   │                │
-   │  └───────────────────┘    └───────────────────┘                │
-   └─────────────┬──────────────────────┬────────────────────────────┘
-                 │                      │
-          ┌──────┴──────┐        ┌──────┴──────┐
-          │ accepted.csv │        │review_queue │
-          │ repaired.csv │        │   .csv      │
-          └──────┬──────┘        └──────┬──────┘
-                 │                      │
-                 │               human_review.py
-                 │                      │
-                 │               reviewed.csv
-                 │                      │
-                 └──────────┬───────────┘
-                            │
-                       merge.py
-                            │
-                   generated_dataset.csv
+```mermaid
+flowchart TD
+    A["stance_detection_dataset.csv<br/>(46,896 rows)"] --> B["data_filtering.py<br/>Keyword + Semantic + Dedup"]
+    G["gold_dataset.csv<br/>(2,300 rows)"] --> B
+    B --> C["preprocessing.py<br/>Ekphrasis + Custom Cleaning"]
+    C --> D{"Candidate Pool<br/>(cleaned, deduplicated)"}
+    
+    D --> E["Stage 1: stage1.py<br/>GPT-4.1-mini<br/>Extract: target, category, opinion"]
+    E --> F["validate_stage1.py<br/>Schema + Span Checks"]
+    F -->|Invalid| H["repair_stage1.py<br/>LLaMA 3.1 8B<br/>Auto-fix + Regenerate"]
+    H -->|Retry| F
+    H -->|Max retries| I["Human Review Queue"]
+    
+    F -->|Valid| J["Stage 2: stage2.py<br/>GPT-4.1-mini<br/>Predict: stance, explanation"]
+    J --> K["validate_stage2.py<br/>Label + Rationale Checks"]
+    K -->|Invalid| L["repair_stage2.py<br/>LLaMA 3.1 8B<br/>Auto-fix + Regenerate"]
+    L -->|Retry| K
+    L -->|Max retries| I
+    
+    K -->|Valid| M["accepted.csv"]
+    K -->|Repaired| N["repaired.csv"]
+    I --> O["human_review.py<br/>Interactive CLI"]
+    O --> P["reviewed.csv"]
+    M --> Q["merge.py"]
+    P --> Q
+    Q --> R["Final ACOS-HD Dataset"]
+    
+    style E fill:#4a9eff,color:#fff
+    style J fill:#4a9eff,color:#fff
+    style H fill:#ff9f43,color:#fff
+    style L fill:#ff9f43,color:#fff
+    style I fill:#ee5a24,color:#fff
+    style M fill:#2ecc71,color:#fff
 ```
 
 ---
