@@ -7,7 +7,7 @@ from collections import Counter
 from typing import Dict, List
 
 import pandas as pd
-from rapidfuzz import fuzz
+# from rapidfuzz import fuzz
 from configs import ACOSHDConfig, get_config
 from validate_stage1 import span_grounded
 
@@ -23,7 +23,7 @@ CSV_FIELDS = [
 
 FINAL_FIELDS = [
     "sample_id", "text", "aspect_target", "aspect_category",
-    "opinion_span", "stance", "explanation", "source_dataset",
+    "opinion_span", "stance", "explanation",
 ]
 
 
@@ -120,7 +120,7 @@ def merge_datasets(cfg: ACOSHDConfig = None):
         return
 
     # Deduplicate
-    merged = dedup_final(merged, cfg.filtering.dedup_fuzzy_threshold)
+    # merged = dedup_final(merged, cfg.filtering.dedup_fuzzy_threshold)
 
     # Quality filter
     merged = quality_filter(merged, cfg.schema)
@@ -138,7 +138,7 @@ def merge_datasets(cfg: ACOSHDConfig = None):
     final["opinion_span"] = merged["opinion_span"]
     final["stance"] = merged["stance"]
     final["explanation"] = merged["explanation"]
-    final["source_dataset"] = merged.get("source_dataset", "")
+    #final["source_dataset"] = merged.get("source_dataset", "")
 
     # Save
     final.to_csv(output_path, index=False, encoding="utf-8")

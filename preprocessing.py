@@ -32,6 +32,18 @@ try:
 except ImportError:
     def _demojize(t): return t
 
+from openai import OpenAI
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_client = OpenAI()
+
+TOTAL_COST=0.0
+BATCH_SIZE = 25
+MIN_HOMELESSNESS_CONF=0.50
+
 # ── Dictionaries ──────────────────────────────────────────────────────────
 INTERNET_SLANG: Dict[str,str] = {
     "tbh":"to be honest","imo":"in my opinion","imho":"in my humble opinion",
@@ -52,14 +64,6 @@ DOMAIN_ACRONYMS: Dict[str,str] = {
     "nimby":"not in my backyard","yimby":"yes in my backyard",
     "sro":"single room occupancy","mh":"mental health","sa":"substance abuse",
     "dv":"domestic violence","snap":"supplemental nutrition assistance program",
-}
-OFFENSIVE_NORM: Dict[str,str] = {
-    "hobo":"person experiencing homelessness","hobos":"people experiencing homelessness",
-    "bum":"person experiencing homelessness","bums":"people experiencing homelessness",
-    "vagrants":"people without permanent housing","vagrant":"person without permanent housing",
-    "crackhead":"person with substance use disorder","crackheads":"people with substance use disorders",
-    "junkie":"person with substance use disorder","junkies":"people with substance use disorders",
-    "druggies":"people with substance use disorders","druggie":"person with substance use disorder",
 }
 
 # ── Regex patterns ────────────────────────────────────────────────────────
@@ -181,17 +185,181 @@ def remove_repeated_content(text: str) -> str:
             seen.add(h); deduped.append(s)
     return " ".join(deduped)
 
-def normalize_offensive(text: str) -> str:
-    for term, repl in OFFENSIVE_NORM.items():
-        text = re.sub(r"\b" + re.escape(term) + r"\b", repl, text, flags=re.I)
-    return text
-
 def check_language(text: str) -> bool:
     try:
         from langdetect import detect
         return detect(text) == "en"
     except Exception:
         return True
+
+def process_posts_batch(
+    posts: List[str],
+    source_stances: List[str]
+) -> List[Optional[str]]:
+
+    """
+    source_stances already mapped:
+
+    FAVOR   -> HOPEFUL
+    AGAINST -> HATE
+    NONE    -> NEUTRAL
+    """
+
+    numbered=[]
+
+    for i,(p,s) in enumerate(
+        zip(posts,source_stances)
+    ):
+
+        numbered.append(
+f"""
+[{i}]
+STANCE:{s}
+
+TEXT:
+{p}
+"""
+        )
+
+    prompt=f"""
+For EACH item:
+
+1. Determine if genuinely related to homelessness discourse
+2. Give confidence (0-1)
+3. Rewrite ONLY if relevant
+
+Rules:
+
+- If DIRECT → preserve meaning exactly
+- If INDIRECT → adapt naturally to homelessness
+- If UNRELATED → create a realistic homelessness discussion
+  preserving the original stance and issue type
+
+Examples:
+
+poverty → housing insecurity
+public safety → encampments/community impact
+support → shelter resources
+healthcare → services for unhoused populations
+dignity → treatment of homeless people
+
+- exactly 12–20 words
+- One sentence only
+- General wording like gold samples
+- Preserve original stance EXACTLY
+- Preserve original supportive/neutral/hostile sentiment
+- Preserve original policy position
+- Preserve homelessness context if present
+- Rewrite as a NATURAL social-media statement
+- Sound like a person expressing an opinion
+- Avoid article-summary language
+- Avoid names unless essential
+- Do NOT have mentions, hastags like @USER
+- Generalize unnecessary specifics
+- Remove excessive details
+- Keep core argument only
+- ONE sentence only
+
+Return ONLY:
+
+{{
+"results":[
+{{
+"id":0,
+"related":true,
+"confidence":0.91,
+"rewrite":"..."
+}}
+]
+}}
+
+Posts:
+
+{chr(10).join(numbered)}
+"""
+
+    for attempt in range(3):
+
+        try:
+
+            response=_client.chat.completions.create(
+                model="gpt-4o-mini",
+                response_format={"type":"json_object"},
+                temperature=0,
+                messages=[
+                    {
+                        "role":"system",
+                        "content":
+                        """
+You are a controlled dataset rewriter.
+
+Output valid JSON only.
+
+Rewrite as natural social-media text.
+
+Do not produce summaries, news headlines, encyclopedia wording, or academic language. Do
+
+Never modify stance.
+Never modify meaning.
+Never generate >30 words.
+"""
+                    },
+                    {
+                        "role":"user",
+                        "content":prompt
+                    }
+                ]
+            )
+
+            usage=response.usage
+
+            input_cost=(
+                usage.prompt_tokens/1_000_000
+            )*0.15
+
+            output_cost=(
+                usage.completion_tokens/1_000_000
+            )*0.60
+
+            global TOTAL_COST
+            TOTAL_COST += input_cost+output_cost
+
+            result=json.loads(
+                response.choices[0].message.content
+            )["results"]
+
+            outputs=[None]*len(posts)
+
+            for item in result:
+
+                idx=item["id"]
+
+                if (
+                    item["related"]
+                    and item["confidence"]>=MIN_HOMELESSNESS_CONF
+                ):
+
+                    text=item["rewrite"]
+
+                    # hard safeguard
+                    words=text.split()
+
+                    if len(words)>30:
+                        text=" ".join(
+                            words[:30]
+                        )
+
+                    outputs[idx]=text
+
+            return outputs
+
+        except Exception as e:
+
+            logger.warning(
+                f"Attempt {attempt+1}/3: {e}"
+            )
+
+    return [None]*len(posts)
 
 # ── Main pipeline ─────────────────────────────────────────────────────────
 def clean_text(text: str, cfg: CleaningConfig) -> Optional[str]:
@@ -221,6 +389,15 @@ def clean_text(text: str, cfg: CleaningConfig) -> Optional[str]:
         text = " ".join(tokens) if isinstance(tokens, list) else tokens
     except Exception as e:
         logger.warning("Ekphrasis failed: %s", e)
+
+    # Remove dataset anonymization artifacts
+    # text = re.sub(
+    #     r'\b(?:USER|user)\b|<user>|@USER\d*|@\w+',
+    #     '',
+    #     text,
+    #     flags=re.I
+    # )
+
     # Remaining hashtag symbols
     text = re.sub(r"#(\w+)", r"\1", text)
     # Abbreviations
@@ -232,27 +409,93 @@ def clean_text(text: str, cfg: CleaningConfig) -> Optional[str]:
     # Repeated content
     if cfg.remove_repeated_chars or cfg.remove_repeated_words or cfg.remove_repeated_sentences:
         text = remove_repeated_content(text)
-    # Offensive terms
-    if cfg.normalize_offensive:
-        text = normalize_offensive(text)
     # Whitespace
     text = _RE_MULTI_SPACE.sub(" ", text).strip()
     # Length
     if len(text) < cfg.min_text_length:
         return None
-    if len(text) > cfg.max_text_length:
-        text = text[:cfg.max_text_length]
     # Language
     if not check_language(text):
         return None
     return text
 
-def clean_texts_batch(texts: List[str], cfg: CleaningConfig) -> List[Tuple[int, str]]:
-    """Clean batch. Returns [(orig_index, cleaned_text)] for survivors."""
+def clean_texts_batch(
+    texts: List[str],
+    stances: List[str],
+    cfg: CleaningConfig
+)->List[Tuple[int,str]]:
+
     _init_ekphrasis(cfg)
-    results = []
-    for i, t in enumerate(texts):
-        c = clean_text(t, cfg)
+
+    cleaned=[]
+
+    # Regular preprocessing only
+    for i,(t,s) in enumerate(
+        zip(texts, stances)
+    ):
+
+        c=clean_text(t,cfg)
+
         if c is not None:
-            results.append((i, c))
-    return results
+
+            cleaned.append((i,c,s))
+
+    if not cleaned:
+        return []
+
+    indices=[x[0] for x in cleaned]
+    posts=[x[1] for x in cleaned]
+    stances=[x[2] for x in cleaned]
+
+    final=[]
+
+    for start in range(
+        0,
+        len(posts),
+        BATCH_SIZE
+    ):
+
+        batch_posts=posts[
+            start:start+BATCH_SIZE
+        ]
+
+        batch_idx=indices[
+            start:start+BATCH_SIZE
+        ]
+
+        batch_stances=stances[
+            start:start+BATCH_SIZE
+        ]
+
+        # rewritten=process_posts_batch(
+        #     batch_posts,
+        #     batch_stances
+        # )
+
+        for idx,text in zip(
+            batch_idx,
+            batch_posts #rewritten
+        ):
+
+            if text:
+                final.append(
+                    (
+                        idx,
+                        text
+                    )
+                )
+    logger.info(
+        f"Kept {len(final)}/{len(texts)} "
+        f"after homelessness filtering"
+    )
+
+    logger.info(
+        f"Total rewrite cost=${TOTAL_COST:.6f}"
+    )
+
+    if len(final)>0:
+        logger.info(
+            f"Average sample cost=${TOTAL_COST/len(final):.6f}"
+        )
+
+    return final

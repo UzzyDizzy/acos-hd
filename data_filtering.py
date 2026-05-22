@@ -264,8 +264,12 @@ def run_filtering(cfg: ACOSHDConfig) -> pd.DataFrame:
     candidates = keyword_filter(candidates, cfg.filter)
 
     # 4. Semantic similarity filtering (cached embeddings)
-    os.makedirs(cfg.data.cache_dir, exist_ok=True)
-    candidates = semantic_filter(candidates, cfg.filter, cfg.data.cache_dir)
+    # os.makedirs(cfg.data.cache_dir, exist_ok=True)
+    # candidates = semantic_filter(candidates, cfg.filter, cfg.data.cache_dir)
+    logger.info(
+        "Skipping semantic similarity filtering "
+        "(GPT relevance filter used instead)"
+    )
 
     # 5. Exact dedup against gold
     candidates = exact_dedup_against_gold(candidates)

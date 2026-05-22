@@ -77,6 +77,22 @@ class FilterConfig:
         # lexical variants from paper Table 11
         "hobo", "vagrant", "transient", "beggar",
         "people experiencing homelessness",
+
+    "street",
+    "rent",
+    "eviction",
+    "affordable housing",
+    "housing crisis",
+    "housing insecurity",
+    "public housing",
+    "tent",
+    "addiction",
+    "mental health",
+    "poverty",
+    "welfare",
+    "support services",
+    "transitional housing",
+    "displacement"
     ])
 
     # --- secondary keywords (issue-specific) ------------------------------
@@ -100,7 +116,7 @@ class FilterConfig:
     min_keyword_hits: int = 1
 
     # --- semantic-similarity filtering ------------------------------------
-    use_semantic_similarity: bool = True
+    use_semantic_similarity: bool = False
     similarity_model: str = "all-MiniLM-L6-v2"
     similarity_threshold: float = 0.35
 
@@ -123,7 +139,7 @@ class FilterConfig:
     vast_priority_weight: float = 2.0  # over-sample VAST
 
     # --- deduplication ----------------------------------------------------
-    dedup_fuzzy_threshold: float = 0.85  # Jaccard / MinHash threshold
+    dedup_fuzzy_threshold: float = 1  # Jaccard / MinHash threshold
     dedup_num_perm: int = 128  # MinHash permutations
 
 
@@ -210,7 +226,7 @@ class PipelineConfig:
     """Top-level pipeline control knobs."""
 
     # How many samples to generate per stance class
-    samples_per_class: int = 10  # set to 1000 for production run
+    samples_per_class: int = 1000  # set to 1000 for production run
 
     stance_classes: List[str] = field(
         default_factory=lambda: ["HATE", "NEUTRAL", "HOPEFUL"]

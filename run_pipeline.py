@@ -17,6 +17,7 @@ from data_filtering import (
     is_duplicate_of_accepted, register_accepted, is_duplicate_of_gold,
 )
 from preprocessing import clean_text
+from preprocessing import clean_texts_batch
 from prompt_stage1 import load_few_shot_from_gold
 from prompt_stage2 import load_few_shot_stage2_from_gold
 from stage1 import generate_and_validate_stage1, get_cost_summary as s1_costs
@@ -89,12 +90,53 @@ def process_sample(
     """Process a single candidate through Stage 1 → Validate → Repair → Stage 2 → Validate → Repair.
     Returns a result dict for CSV output.
     """
-    original_text = str(row.get("text", ""))
-    cleaned = clean_text(original_text, cfg.cleaning)
-    if cleaned is None:
-        return {"status": "filtered", "errors": "Text filtered during cleaning"}
+    # original_text = str(row.get("text", ""))
+    # cleaned = clean_text(original_text, cfg.cleaning)
+    # if cleaned is None:
+    #     return {"status": "filtered", "errors": "Text filtered during cleaning"}
 
-    post_text = cleaned
+    # post_text = cleaned
+
+    original_text = str(
+        row.get("text","")
+    )
+
+    source_stance = row.get(
+        "stance",
+        "NONE"
+    )
+
+    mapped_stance = row.get(
+        "mapped_stance",
+        source_stance
+    )
+
+    # fallback if missing
+    if mapped_stance not in [
+        "HOPEFUL",
+        "HATE",
+        "NEUTRAL"
+    ]:
+        from data_filtering import map_stance
+
+        mapped_stance = map_stance(
+            source_stance
+        )
+
+    batch_result = clean_texts_batch(
+        texts=[original_text],
+        stances=[mapped_stance],
+        cfg=cfg.cleaning
+    )
+
+    if not batch_result:
+        return {
+            "status":"filtered",
+            "errors":"Filtered by GPT relevance"
+        }
+
+    post_text = batch_result[0][1]
+
     total_cost = 0.0
     s1_attempts = 0
     s2_attempts = 0
