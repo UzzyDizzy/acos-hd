@@ -1,5 +1,5 @@
 """
-run_pipeline.py - Main ACOS-HD generation pipeline orchestrator.
+data_constructor.py - ACOS-HD data generation pipeline orchestrator.
 Flow: Load → Filter → Clean → For each stance class: Generate → Validate → Repair → Accept/Queue
 Implements the full pipeline from paper Figure 2.
 """
