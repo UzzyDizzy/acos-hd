@@ -16,7 +16,7 @@ stance_detection_dataset.csv  ──►  data_filtering.py  ──►  preproces
          │                      against gold_dataset.csv)        │
          ▼                              ▼                        ▼
    ┌─────────────────────────────────────────────────────────────────┐
-   │                      run_pipeline.py                            │
+   │                      data_constructor.py                            │
    │  ┌───────────────────┐    ┌───────────────────┐                │
    │  │ Stage 1 (GPT-4.1) │    │ Stage 2 (GPT-4.1) │                │
    │  │ Aspect Target      │──►│ Stance Label       │                │
@@ -64,9 +64,10 @@ stance_detection_dataset.csv  ──►  data_filtering.py  ──►  preproces
 | `validate_stage2.py` | Stance label validation, rationale grounding, label-consistency filtering |
 | `repair_stage1.py` | Auto-fix + LLaMA 3.1 8B regeneration for Stage 1 failures |
 | `repair_stage2.py` | Auto-fix + LLaMA 3.1 8B regeneration for Stage 2 failures |
-| `run_pipeline.py` | Main orchestrator: load → filter → clean → generate → validate → repair → save |
+| `data_constructor.py` | Main orchestrator: load → filter → clean → generate → validate → repair → save |
 | `human_review.py` | Interactive CLI for reviewing failed samples |
 | `merge.py` | Merge accepted + reviewed into final `generated_dataset.csv` |
+| `inference.py` | Does inference on test.csv having text column and saves results inside `test_results.csv` |
 
 ---
 
@@ -92,6 +93,7 @@ TWITTER_API=...
 
 - `stance_detection_dataset.csv` — Mixed dataset (PStance, COVID19, SemEval2016, VAST)
 - `gold_dataset.csv` — Manually curated ACOS-HD gold standard
+- `test.csv` — test samples to do inference on
 
 ### 4. Cloned Repos (already present)
 
@@ -106,13 +108,13 @@ TWITTER_API=...
 
 ```bash
 # Default: 1000 samples per class (3000 total)
-python run_pipeline.py
+python data_constructor.py
 
 # Custom sample count and budget
-python run_pipeline.py --samples-per-class 500 --budget 50.0
+python data_constructor.py --samples-per-class 500 --budget 50.0
 
 # Verbose logging
-python run_pipeline.py --log-level DEBUG
+python data_constructor.py --log-level DEBUG
 ```
 
 ### Human Review
@@ -127,6 +129,12 @@ Actions: `[a]ccept` · `[e]dit` · `[r]eject` · `[s]kip` · `[q]uit`
 
 ```bash
 python merge.py
+```
+
+### Do Sampling
+
+```bash
+python inference.py
 ```
 
 ---
